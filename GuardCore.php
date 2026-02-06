@@ -1,75 +1,76 @@
 <?php
-namespace Panels;
 
-class GuardCore
+class guard
 {
-    private $baseUrl;
+    private $base_url;
     private $token;
 
-    public function __construct($config)
+    public function __construct($panel)
     {
-        $this->baseUrl = rtrim($config['base_url'], '/');
-        $this->token   = $config['api_token'];
+        $this->base_url = rtrim($panel['panel_url'], '/');
+        $this->token    = $panel['panel_key'];
     }
 
-    private function request($method, $endpoint, $payload = [])
+    private function request($method, $endpoint, $data = null)
     {
-        $url = "{$this->baseUrl}{$endpoint}";
+        $ch = curl_init($this->base_url . $endpoint);
+
         $headers = [
             "Authorization: Bearer {$this->token}",
-            "Content-Type: application/json",
+            "Content-Type: application/json"
         ];
 
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        if (!empty($payload)) {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST  => $method,
+            CURLOPT_HTTPHEADER     => $headers,
+        ]);
+
+        if ($data !== null) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         }
 
         $response = curl_exec($ch);
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $status   = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-        if ($code >= 400) {
-            throw new \Exception("Guard API Error ({$code}): {$response}");
+        if ($status >= 400) {
+            return [
+                'status' => false,
+                'msg' => $response
+            ];
         }
 
         return json_decode($response, true);
     }
 
-    public function createSubscription($data)
+    public function create($user)
     {
-        return $this->request('POST', '/api/subscriptions', $data);
+        return $this->request("POST", "/api/subscriptions", [
+            "username"   => $user['username'],
+            "service_id" => $user['service_id'],
+            "expire"     => $user['expire']
+        ]);
     }
 
-    public function getSubscription($username)
+    public function renew($user)
     {
-        return $this->request('GET', "/api/subscriptions/{$username}");
+        return $this->request("PUT", "/api/subscriptions/" . $user['username'], [
+            "expire" => $user['expire']
+        ]);
     }
 
-    public function updateSubscription($username, $data)
+    public function delete($user)
     {
-        return $this->request('PUT', "/api/subscriptions/{$username}", $data);
+        return $this->request("DELETE", "/api/subscriptions", [
+            "username" => $user['username']
+        ]);
     }
 
-    public function deleteSubscription($username)
+    public function usage($user)
     {
-        return $this->request('DELETE', "/api/subscriptions", ["username" => $username]);
-    }
-
-    public function enableSubscription($username)
-    {
-        return $this->request('POST', "/api/subscriptions/enable", ["username" => $username]);
-    }
-
-    public function disableSubscription($username)
-    {
-        return $this->request('POST', "/api/subscriptions/disable", ["username" => $username]);
-    }
-
-    public function getUsages($username)
-    {
-        return $this->request('GET', "/api/subscriptions/{$username}/usages");
+        return $this->request(
+            "GET",
+            "/api/subscriptions/" . $user['username'] . "/usages"
+        );
     }
 }
